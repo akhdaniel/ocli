@@ -221,11 +221,11 @@ export default {
       }
     }
     
-    // Load model fields using get_view
+    // Load model fields using get_views
     const loadModelFields = async () => {
       try {
         // Fetch fields view definition
-        const getViewRequest = {
+        const getViewsRequest = {
           jsonrpc: '2.0',
           method: 'call',
           params: {
@@ -236,8 +236,11 @@ export default {
               parseInt(localStorage.getItem('odooUserId')),
               localStorage.getItem('odooPassword'),
               props.modelName,
-              'get_view',
-              [],
+              'get_views', // Correct method name (plural)
+              [
+                [], // View IDs (empty for default)
+                ['list', 'form'] // View types we want
+              ],
               {
                 view_type: 'list', // For list view
                 view_id: null,
@@ -248,39 +251,31 @@ export default {
           id: Date.now() + 1
         }
         
-        console.log('Get View Request:', getViewRequest)
+        console.log('Get Views Request:', getViewsRequest)
         
-        const response = await axios.post('/jsonrpc', getViewRequest)
-        console.log('Get View Response:', response)
+        const response = await axios.post('/jsonrpc', getViewsRequest)
+        console.log('Get Views Response:', response)
         
         if (response.data.result) {
           const result = response.data.result
           
-          // Log the architecture to see what we're working with
-          console.log('Architecture:', result.arch)
-          
           // Extract fields from the response
           const fieldDefinitions = result.fields || {}
-          console.log('Field Definitions:', fieldDefinitions)
           
           // Parse the XML architecture to get field order and visibility
           const parser = new DOMParser()
           const xmlDoc = parser.parseFromString(result.arch, 'text/xml')
-          console.log('Parsed XML Document:', xmlDoc)
           
           // Get the list element (could be named 'list' or 'tree')
           let listElement = xmlDoc.querySelector('list') || xmlDoc.querySelector('tree')
-          console.log('Found list element:', listElement)
           
           // If no list/tree element found, try to get all field elements directly
           let fieldElements = []
           if (listElement) {
             fieldElements = listElement.querySelectorAll('field')
-            console.log('Field elements found in list:', fieldElements)
           } else {
             // Fallback to getting all field elements in the document
             fieldElements = xmlDoc.querySelectorAll('field[name]')
-            console.log('Field elements found in document:', fieldElements)
           }
           
           // Build field list in the order they appear in the view
