@@ -188,12 +188,16 @@ export default {
           method: 'call',
           params: {
             model: props.modelName,
-            method: 'web_search_read', // Add method parameter with web_search_read
-            fields: fields.value.map(field => field.name),
-            domain: domain,
-            limit: 80,
-            offset: 0,
-            order: '' // No specific ordering
+            method: 'web_search_read',
+            args: [
+              domain, // Domain as first argument
+              fields.value.map(field => field.name) // Fields as second argument
+            ],
+            kwargs: {
+              limit: 80,
+              offset: 0,
+              order: '' // No specific ordering
+            }
           },
           id: Date.now()
         }
