@@ -221,139 +221,145 @@ export default {
       }
     }
     
-    // Load model fields using get_views
+    // Load model fields using direct /web/webclient/get_views endpoint
     const loadModelFields = async () => {
       try {
-        // Fetch fields view definition
+        // Prepare context
+        const context = {
+          lang: 'en_US',
+          tz: 'UTC',
+          uid: parseInt(localStorage.getItem('odooUserId'))
+        }
+        
+        // Fetch fields view definition using direct endpoint
         const getViewsRequest = {
-          jsonrpc: '2.0',
-          method: 'call',
-          params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              localStorage.getItem('odooDatabase'),
-              parseInt(localStorage.getItem('odooUserId')),
-              localStorage.getItem('odooPassword'),
-              props.modelName,
-              'get_views', // Correct method name (plural)
-              [
-                [], // View IDs (empty for default)
-                ['list', 'form'] // View types we want
-              ],
-              {
-                view_type: 'list', // For list view
-                view_id: null,
-                toolbar: false
-              }
-            ]
-          },
-          id: Date.now() + 1
+          model: props.modelName,
+          views: [[false, 'list'], [false, 'form']], // Get list and form views
+          context: context,
+          toolbar: false,
+          load_filters: false
         }
         
         console.log('Get Views Request:', getViewsRequest)
         
-        const response = await axios.post('/jsonrpc', getViewsRequest)
+        const response = await axios.post('/web/webclient/get_views', getViewsRequest)
         console.log('Get Views Response:', response)
         
         if (response.data.result) {
           const result = response.data.result
           
-          // Extract fields from the response
-          const fieldDefinitions = result.fields || {}
-          
-          // Parse the XML architecture to get field order and visibility
-          const parser = new DOMParser()
-          const xmlDoc = parser.parseFromString(result.arch, 'text/xml')
-          
-          // Get the list element (could be named 'list' or 'tree')
-          let listElement = xmlDoc.querySelector('list') || xmlDoc.querySelector('tree')
-          
-          // If no list/tree element found, try to get all field elements directly
-          let fieldElements = []
-          if (listElement) {
-            fieldElements = listElement.querySelectorAll('field')
-          } else {
-            // Fallback to getting all field elements in the document
-            fieldElements = xmlDoc.querySelectorAll('field[name]')
+          // Extract list view definition
+          let listViewDef = null
+          if (result.fields_views && result.fields_views.list) {
+            listViewDef = result.fields_views.list
+          } else if (result.fields_views && result.fields_views.tree) {
+            // Fallback to tree view if list view not available
+            listViewDef = result.fields_views.tree
           }
           
-          // Build field list in the order they appear in the view
-          const fieldList = []
-          for (let i = 0; i < fieldElements.length; i++) {
-            const fieldElement = fieldElements[i]
-            const fieldName = fieldElement.getAttribute('name')
+          if (listViewDef) {
+            // Extract fields from the response
+            const fieldDefinitions = listViewDef.fields || {}
             
-            // Log each field element we're processing
-            console.log('Processing field element:', fieldElement)
-            console.log('Field name:', fieldName)
+            // Parse the XML architecture to get field order and visibility
+            const parser = new DOMParser()
+            const xmlDoc = parser.parseFromString(listViewDef.arch, 'text/xml')
             
-            // Skip if no field name
-            if (!fieldName) {
-              console.log('Skipping field element with no name')
-              continue
-            }
+            // Get the list element (could be named 'list' or 'tree')
+            let listElement = xmlDoc.querySelector('list') || xmlDoc.querySelector('tree')
             
-            // Check if field should be invisible in column
-            const columnInvisible = fieldElement.getAttribute('column_invisible')
-            if (columnInvisible === '1' || columnInvisible === 'true' || columnInvisible === 'True') {
-              console.log('Skipping column invisible field:', fieldName)
-              continue
-            }
-            
-            // Check if field should be invisible (deprecated but still used)
-            const invisible = fieldElement.getAttribute('invisible')
-            if (invisible === '1' || invisible === 'true' || invisible === 'True') {
-              console.log('Skipping invisible field:', fieldName)
-              continue
-            }
-            
-            // Create field object with available information
-            let fieldObj = {
-              name: fieldName,
-              type: 'char', // Default type if not defined
-              string: fieldName.replace(/_/g, ' ') // Default string if not defined
-            }
-            
-            // Add field definition if available
-            if (fieldDefinitions[fieldName]) {
-              fieldObj = {
-                ...fieldObj,
-                ...fieldDefinitions[fieldName]
-              }
-              console.log('Field definition found for:', fieldName)
+            // If no list/tree element found, try to get all field elements directly
+            let fieldElements = []
+            if (listElement) {
+              fieldElements = listElement.querySelectorAll('field')
             } else {
-              console.log('No field definition found for:', fieldName, 'Using defaults')
+              // Fallback to getting all field elements in the document
+              fieldElements = xmlDoc.querySelectorAll('field[name]')
             }
             
-            // Extract additional attributes from the XML element
-            const fieldAttributes = {}
-            for (let j = 0; j < fieldElement.attributes.length; j++) {
-              const attr = fieldElement.attributes[j]
-              fieldAttributes[attr.name] = attr.value
+            // Build field list in the order they appear in the view
+            const fieldList = []
+            for (let i = 0; i < fieldElements.length; i++) {
+              const fieldElement = fieldElements[i]
+              const fieldName = fieldElement.getAttribute('name')
+              
+              // Log each field element we're processing
+              console.log('Processing field element:', fieldElement)
+              console.log('Field name:', fieldName)
+              
+              // Skip if no field name
+              if (!fieldName) {
+                console.log('Skipping field element with no name')
+                continue
+              }
+              
+              // Check if field should be invisible in column
+              const columnInvisible = fieldElement.getAttribute('column_invisible')
+              if (columnInvisible === '1' || columnInvisible === 'true' || columnInvisible === 'True') {
+                console.log('Skipping column invisible field:', fieldName)
+                continue
+              }
+              
+              // Check if field should be invisible (deprecated but still used)
+              const invisible = fieldElement.getAttribute('invisible')
+              if (invisible === '1' || invisible === 'true' || invisible === 'True') {
+                console.log('Skipping invisible field:', fieldName)
+                continue
+              }
+              
+              // Create field object with available information
+              let fieldObj = {
+                name: fieldName,
+                type: 'char', // Default type if not defined
+                string: fieldName.replace(/_/g, ' ') // Default string if not defined
+              }
+              
+              // Add field definition if available
+              if (fieldDefinitions[fieldName]) {
+                fieldObj = {
+                  ...fieldObj,
+                  ...fieldDefinitions[fieldName]
+                }
+                console.log('Field definition found for:', fieldName)
+              } else {
+                console.log('No field definition found for:', fieldName, 'Using defaults')
+              }
+              
+              // Extract additional attributes from the XML element
+              const fieldAttributes = {}
+              for (let j = 0; j < fieldElement.attributes.length; j++) {
+                const attr = fieldElement.attributes[j]
+                fieldAttributes[attr.name] = attr.value
+              }
+              
+              console.log('Field attributes for', fieldName, ':', fieldAttributes)
+              
+              fieldList.push({
+                ...fieldObj,
+                ...fieldAttributes // Include all XML attributes
+              })
             }
             
-            console.log('Field attributes for', fieldName, ':', fieldAttributes)
+            console.log('Final field list:', fieldList)
             
-            fieldList.push({
-              ...fieldObj,
-              ...fieldAttributes // Include all XML attributes
-            })
-          }
-          
-          console.log('Final field list:', fieldList)
-          
-          // If no fields found in view, fall back to some defaults
-          if (fieldList.length === 0) {
-            console.log('No fields found, using defaults')
-            fieldList.push(
+            // If no fields found in view, fall back to some defaults
+            if (fieldList.length === 0) {
+              console.log('No fields found, using defaults')
+              fieldList.push(
+                { name: 'id', type: 'integer', string: 'ID' },
+                { name: 'name', type: 'char', string: 'Name' }
+              )
+            }
+            
+            fields.value = fieldList
+            console.log('Fields loaded:', fieldList)
+          } else {
+            console.log('No list view definition found, using defaults')
+            fields.value = [
               { name: 'id', type: 'integer', string: 'ID' },
               { name: 'name', type: 'char', string: 'Name' }
-            )
+            ]
           }
-          
-          fields.value = fieldList
-          console.log('Fields loaded:', fieldList)
         }
       } catch (error) {
         console.error('Error loading model fields:', error)
