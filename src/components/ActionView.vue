@@ -171,7 +171,7 @@ export default {
       }
     })
     
-    // Load records from Odoo
+    // Load records from Odoo using /web/dataset/call_kw/{model_name}/web_search_read endpoint
     const loadRecords = async () => {
       try {
         loading.value = true
@@ -182,37 +182,47 @@ export default {
         // Build domain filter
         const domain = buildDomainFilter()
         
-        // Fetch records from the model
-        const recordsRequest = {
+        // Fetch records from the model using the correct endpoint
+        const webSearchReadRequest = {
           jsonrpc: '2.0',
           method: 'call',
           params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              localStorage.getItem('odooDatabase'),
-              parseInt(localStorage.getItem('odooUserId')),
-              localStorage.getItem('odooPassword'),
-              props.modelName,
-              'search_read',
-              [domain],
-              {
-                fields: fields.value.map(field => field.name),
-                limit: 80
-              }
-            ]
+            model: props.modelName,
+            fields: fields.value.map(field => field.name),
+            domain: domain,
+            limit: 80,
+            offset: 0,
+            order: '' // No specific ordering
           },
           id: Date.now()
         }
         
-        console.log('Records Request:', recordsRequest)
+        console.log('Web Search Read Request:', webSearchReadRequest)
         
-        const response = await axios.post('/jsonrpc', recordsRequest)
-        console.log('Records Response:', response)
+        // Use the correct endpoint URL
+        const endpointUrl = `/web/dataset/call_kw/${props.modelName}/web_search_read`
+        const response = await axios.post(endpointUrl, webSearchReadRequest)
+        console.log('Web Search Read Response:', response)
         
         if (response.data.result) {
-          records.value = response.data.result
-          filteredRecords.value = response.data.result
+          // Extract records from the response
+          const result = response.data.result
+          let recordsData = []
+          
+          // Handle different response formats
+          if (Array.isArray(result)) {
+            // Standard search_read format
+            recordsData = result
+          } else if (result.records) {
+            // web_search_read format
+            recordsData = result.records
+          } else {
+            // Fallback
+            recordsData = []
+          }
+          
+          records.value = recordsData
+          filteredRecords.value = recordsData
         }
       } catch (error) {
         console.error('Error loading records:', error)
