@@ -188,6 +188,7 @@ export default {
           method: 'call',
           params: {
             model: props.modelName,
+            method: 'web_search_read', // Add method parameter with web_search_read
             fields: fields.value.map(field => field.name),
             domain: domain,
             limit: 80,
