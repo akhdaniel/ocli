@@ -221,28 +221,34 @@ export default {
       }
     }
     
-    // Load model fields using direct /web/webclient/get_views endpoint
+    // Load model fields using /web/dataset/call_kw/{model_name}/get_views endpoint
     const loadModelFields = async () => {
       try {
-        // Prepare context
-        const context = {
-          lang: 'en_US',
-          tz: 'UTC',
-          uid: parseInt(localStorage.getItem('odooUserId'))
-        }
-        
-        // Fetch fields view definition using direct endpoint
+        // Fetch fields view definition using the correct endpoint
         const getViewsRequest = {
-          model: props.modelName,
-          views: [[false, 'list'], [false, 'form']], // Get list and form views
-          context: context,
-          toolbar: false,
-          load_filters: false
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: props.modelName,
+            method: 'get_views',
+            args: [
+              [[false, 'list'], [false, 'form']] // Get list and form views
+            ],
+            kwargs: {
+              options: {
+                toolbar: false,
+                load_filters: false
+              }
+            }
+          },
+          id: Date.now() + 1
         }
         
         console.log('Get Views Request:', getViewsRequest)
         
-        const response = await axios.post('/web/webclient/get_views', getViewsRequest)
+        // Use the correct endpoint URL
+        const endpointUrl = `/web/dataset/call_kw/${props.modelName}/get_views`
+        const response = await axios.post(endpointUrl, getViewsRequest)
         console.log('Get Views Response:', response)
         
         if (response.data.result) {
@@ -250,11 +256,11 @@ export default {
           
           // Extract list view definition
           let listViewDef = null
-          if (result.fields_views && result.fields_views.list) {
-            listViewDef = result.fields_views.list
-          } else if (result.fields_views && result.fields_views.tree) {
+          if (result.views && result.views.list) {
+            listViewDef = result.views.list
+          } else if (result.views && result.views.tree) {
             // Fallback to tree view if list view not available
-            listViewDef = result.fields_views.tree
+            listViewDef = result.views.tree
           }
           
           if (listViewDef) {
