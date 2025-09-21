@@ -92,7 +92,13 @@ export default {
           id: 2
         }
 
+        // Log the request
+        console.log('Menu Request:', menuRequest)
+
         const response = await axios.post('/jsonrpc', menuRequest)
+        
+        // Log the response
+        console.log('Menu Response:', response)
         
         if (response.data.result) {
           return response.data.result
@@ -129,8 +135,14 @@ export default {
           id: 1
         }
         
+        // Log the request
+        console.log('Authentication Request:', authRequest)
+        
         // Make the authentication request through the proxy
         const response = await axios.post('/jsonrpc', authRequest)
+        
+        // Log the response
+        console.log('Authentication Response:', response)
         
         // Check if authentication was successful
         if (response.data.result) {
@@ -148,13 +160,14 @@ export default {
           localStorage.setItem('odooDatabase', database.value)
           localStorage.setItem('odooUserId', userId)
           localStorage.setItem('odooUsername', username.value)
+          localStorage.setItem('odooPassword', password.value) // Store password for subsequent requests
           localStorage.setItem('odooMenus', JSON.stringify(menus))
           
           info.value = 'Authentication successful! Redirecting...'
           
-          // Redirect to main page after a short delay
+          // Redirect to menu page after a short delay
           setTimeout(() => {
-            router.push('/main')
+            router.push('/menu')
           }, 1000)
         } else {
           error.value = 'Invalid credentials. Please check your database, username, and password.'

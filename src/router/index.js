@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../components/LoginPage.vue'
 import MainPage from '../components/MainPage.vue'
+import MenuPage from '../components/MenuPage.vue'
 
 const routes = [
   {
@@ -12,6 +13,12 @@ const routes = [
     path: '/main',
     name: 'Main',
     component: MainPage,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/menu',
+    name: 'Menu',
+    component: MenuPage,
     meta: { requiresAuth: true }
   }
 ]
@@ -28,7 +35,7 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next({ name: 'Login' })
   } else if (to.name === 'Login' && isAuthenticated) {
-    next({ name: 'Main' })
+    next({ name: 'Menu' })
   } else {
     next()
   }

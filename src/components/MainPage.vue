@@ -3,26 +3,8 @@
     <!-- Top Navigation Bar -->
     <nav class="top-nav">
       <div class="nav-left">
-        <div class="nav-brand">
+        <div class="nav-brand" @click="goToMenuPage">
           <h3>Odoo Client</h3>
-        </div>
-        <div class="nav-links">
-          <!-- Dynamic menus based on user permissions -->
-          <template v-for="menu in userMenus" :key="menu.id">
-            <a href="#" class="nav-link" v-if="!menu.children || menu.children.length === 0">
-              {{ menu.name }}
-            </a>
-            <div class="nav-dropdown" v-else>
-              <a href="#" class="nav-link dropdown-toggle">
-                {{ menu.name }}
-              </a>
-              <div class="dropdown-menu">
-                <template v-for="child in menu.children" :key="child.id">
-                  <a href="#" class="dropdown-item">{{ child.name }}</a>
-                </template>
-              </div>
-            </div>
-          </template>
         </div>
       </div>
       <div class="nav-right">
@@ -51,7 +33,7 @@
         <div class="page-header">
           <h1>Odoo Dashboard</h1>
           <div class="header-actions">
-            <button class="btn btn-primary">New Project</button>
+            <button class="btn btn-primary" @click="goToMenuPage">View All Apps</button>
             <button class="btn btn-secondary">Export</button>
           </div>
         </div>
@@ -190,7 +172,6 @@ export default {
       version: '',
       database: ''
     })
-    const userMenus = ref([])
 
     // Load user info from localStorage on component mount
     onMounted(() => {
@@ -198,72 +179,9 @@ export default {
       userInfo.value.database = localStorage.getItem('odooDatabase') || ''
       userInfo.value.serverUrl = localStorage.getItem('odooServerUrl') || ''
       
-      // Load menus from localStorage
-      loadUserMenus()
-      
       // Fetch server information
       fetchServerInfo()
     })
-
-    const loadUserMenus = () => {
-      try {
-        const menusData = localStorage.getItem('odooMenus')
-        console.log('Menus data from localStorage:', menusData)
-        if (menusData) {
-          const menus = JSON.parse(menusData)
-          console.log('Parsed menus:', menus)
-          // Convert the menu object to an array of top-level menus
-          userMenus.value = processMenus(menus)
-          console.log('Processed menus:', userMenus.value)
-        } else {
-          console.log('No menus data found in localStorage')
-          userMenus.value = []
-        }
-      } catch (err) {
-        console.error('Error loading menus:', err)
-        userMenus.value = []
-      }
-    }
-
-    const processMenus = (menus) => {
-      console.log('Processing menus:', menus)
-      // Convert the hierarchical menu structure to a flat array of top-level menus
-      // The menus object is keyed by menu ID
-      const topLevelMenus = []
-      
-      // Find top-level menus (those without a parent or with parent_id = false)
-      for (const menuId in menus) {
-        const menu = menus[menuId]
-        if (!menu.parent_id || menu.parent_id === false) {
-          topLevelMenus.push({
-            id: menu.id,
-            name: menu.name,
-            children: getMenuChildren(menu.id, menus)
-          })
-        }
-      }
-      
-      console.log('Top level menus:', topLevelMenus)
-      return topLevelMenus
-    }
-
-    const getMenuChildren = (parentId, menus) => {
-      const children = []
-      
-      for (const menuId in menus) {
-        const menu = menus[menuId]
-        // Check if parent_id is an array and the first element matches parentId
-        if (menu.parent_id && Array.isArray(menu.parent_id) && menu.parent_id[0] === parentId) {
-          children.push({
-            id: menu.id,
-            name: menu.name,
-            children: getMenuChildren(menu.id, menus)
-          })
-        }
-      }
-      
-      return children
-    }
 
     const fetchServerInfo = async () => {
       try {
@@ -284,7 +202,13 @@ export default {
           id: 1
         }
         
+        // Log the request
+        console.log('Server Info Request:', versionRequest)
+        
         const response = await axios.post('/jsonrpc', versionRequest)
+        
+        // Log the response
+        console.log('Server Info Response:', response)
         
         if (response.data.result) {
           serverInfo.value.version = response.data.result.server_version || 'Unknown'
@@ -303,17 +227,22 @@ export default {
       localStorage.removeItem('odooDatabase')
       localStorage.removeItem('odooUserId')
       localStorage.removeItem('odooUsername')
+      localStorage.removeItem('odooPassword')
       localStorage.removeItem('odooMenus')
       
       // Redirect to login page
       router.push('/')
     }
 
+    const goToMenuPage = () => {
+      router.push('/menu')
+    }
+
     return {
       userInfo,
       serverInfo,
-      userMenus,
-      handleLogout
+      handleLogout,
+      goToMenuPage
     }
   }
 }
@@ -347,6 +276,10 @@ export default {
   gap: 2rem;
 }
 
+.nav-brand {
+  cursor: pointer;
+}
+
 .nav-brand h3 {
   margin: 0;
   color: #409eff;
@@ -360,11 +293,12 @@ export default {
 
 .nav-link {
   text-decoration: none;
-  color: #666;
+  color: #6c757d;
   font-weight: 500;
   padding: 0.5rem 0;
   position: relative;
   transition: color 0.2s;
+  font-size: 0.95rem;
 }
 
 .nav-link:hover {
@@ -383,6 +317,7 @@ export default {
   right: 0;
   height: 2px;
   background-color: #409eff;
+  border-radius: 1px;
 }
 
 /* Dropdown Menu Styles */
