@@ -301,14 +301,14 @@ export default {
             
             // Check if field should be invisible in column
             const columnInvisible = fieldElement.getAttribute('column_invisible')
-            if (columnInvisible === '1' || columnInvisible === 'true') {
+            if (columnInvisible === '1' || columnInvisible === 'true' || columnInvisible === 'True') {
               console.log('Skipping column invisible field:', fieldName)
               continue
             }
             
             // Check if field should be invisible (deprecated but still used)
             const invisible = fieldElement.getAttribute('invisible')
-            if (invisible === '1' || invisible === 'true') {
+            if (invisible === '1' || invisible === 'true' || invisible === 'True') {
               console.log('Skipping invisible field:', fieldName)
               continue
             }
@@ -377,15 +377,41 @@ export default {
       // Apply action domain if exists
       if (props.action.domain) {
         try {
-          // The domain might be a string that needs to be parsed
-          if (typeof props.action.domain === 'string') {
-            domain = JSON.parse(props.action.domain)
-          } else if (Array.isArray(props.action.domain)) {
-            domain = props.action.domain
+          console.log('Action domain:', props.action.domain)
+          
+          // The domain might be in different formats:
+          // 1. Already an array: ["|", ["name", "=", "Test"], ["state", "=", "draft"]]
+          // 2. Stringified array: "[\"|\", [\"name\", \"=\", \"Test\"], [\"state\", \"=\", \"draft\"]]"
+          // 3. Empty string: ""
+          // 4. Null/undefined
+          
+          if (Array.isArray(props.action.domain)) {
+            // Already an array
+            domain = [...props.action.domain]
+            console.log('Domain is already an array:', domain)
+          } else if (typeof props.action.domain === 'string' && props.action.domain.trim() !== '') {
+            // String that might be JSON
+            try {
+              const parsed = JSON.parse(props.action.domain)
+              if (Array.isArray(parsed)) {
+                domain = [...parsed]
+                console.log('Parsed domain from JSON:', domain)
+              } else {
+                console.warn('Parsed domain is not an array:', parsed)
+              }
+            } catch (parseError) {
+              // If JSON parsing fails, it might be a Python expression or just an empty string
+              console.warn('Could not parse action domain as JSON:', props.action.domain, parseError)
+            }
+          } else if (props.action.domain === null || props.action.domain === undefined) {
+            // Domain is null or undefined, keep empty domain
+            console.log('Domain is null or undefined')
           }
         } catch (e) {
-          console.warn('Failed to parse action domain:', e)
+          console.warn('Failed to process action domain:', e)
         }
+      } else {
+        console.log('No action domain provided')
       }
       
       // Apply search query if exists
