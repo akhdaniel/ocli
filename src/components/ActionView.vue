@@ -382,26 +382,56 @@ export default {
           // The domain might be in different formats:
           // 1. Already an array: ["|", ["name", "=", "Test"], ["state", "=", "draft"]]
           // 2. Stringified array: "[\"|\", [\"name\", \"=\", \"Test\"], [\"state\", \"=\", \"draft\"]]"
-          // 3. Empty string: ""
-          // 4. Null/undefined
+          // 3. Python tuple format: [('move_type', 'in', ['out_invoice', 'out_refund'])]
+          // 4. Empty string: ""
+          // 5. Null/undefined
           
           if (Array.isArray(props.action.domain)) {
             // Already an array
             domain = [...props.action.domain]
             console.log('Domain is already an array:', domain)
           } else if (typeof props.action.domain === 'string' && props.action.domain.trim() !== '') {
-            // String that might be JSON
+            // String that might be JSON or Python format
+            const trimmedDomain = props.action.domain.trim()
+            
+            // Try JSON parsing first
             try {
-              const parsed = JSON.parse(props.action.domain)
+              const parsed = JSON.parse(trimmedDomain)
               if (Array.isArray(parsed)) {
                 domain = [...parsed]
                 console.log('Parsed domain from JSON:', domain)
               } else {
                 console.warn('Parsed domain is not an array:', parsed)
               }
-            } catch (parseError) {
-              // If JSON parsing fails, it might be a Python expression or just an empty string
-              console.warn('Could not parse action domain as JSON:', props.action.domain, parseError)
+            } catch (jsonError) {
+              // If JSON parsing fails, try to handle Python format
+              console.warn('Could not parse action domain as JSON:', trimmedDomain, jsonError)
+              
+              // Try to convert Python tuple format to JSON
+              // This is a simple conversion that works for basic cases
+              // In a production app, you might want a more robust Python parser
+              try {
+                // Replace Python tuple syntax with JSON array syntax
+                let pythonLikeJson = trimmedDomain
+                  .replace(/\(/g, '[')           // Replace opening parenthesis with bracket
+                  .replace(/\)/g, ']')           // Replace closing parenthesis with bracket
+                  .replace(/'/g, '"')            // Replace single quotes with double quotes
+                  .replace(/None/g, 'null')      // Replace None with null
+                  .replace(/True/g, 'true')      // Replace True with true
+                  .replace(/False/g, 'false')    // Replace False with false
+                
+                console.log('Converted Python-like string to JSON-like:', pythonLikeJson)
+                
+                const parsed = JSON.parse(pythonLikeJson)
+                if (Array.isArray(parsed)) {
+                  domain = [...parsed]
+                  console.log('Parsed domain from converted Python format:', domain)
+                } else {
+                  console.warn('Parsed domain from Python format is not an array:', parsed)
+                }
+              } catch (pythonError) {
+                console.warn('Could not parse action domain as Python format:', trimmedDomain, pythonError)
+              }
             }
           } else if (props.action.domain === null || props.action.domain === undefined) {
             // Domain is null or undefined, keep empty domain
