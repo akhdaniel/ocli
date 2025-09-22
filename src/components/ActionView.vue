@@ -103,6 +103,10 @@ export default {
     action: {
       type: Object,
       required: true
+    },
+    actionDetails: {
+      type: Object,
+      default: () => ({})
     }
   },
   setup(props) {
@@ -113,6 +117,72 @@ export default {
     const filteredRecords = ref([])
     const currentView = ref('list')
     const fields = ref([])
+    const searchFilters = ref([])
+    const searchDomain = ref([])
+    
+    // Process search view to extract filters and domains
+    const processSearchView = (searchViewDef) => {
+      try {
+        // Parse the XML architecture to get filters and domains
+        const parser = new DOMParser()
+        const xmlDoc = parser.parseFromString(searchViewDef.arch, 'text/xml')
+        
+        // Extract domain from search element if exists
+        const searchElement = xmlDoc.querySelector('search')
+        if (searchElement && searchElement.getAttribute('domain')) {
+          try {
+            // Try to parse the domain string
+            const domainStr = searchElement.getAttribute('domain')
+            // Simple parsing for common cases - in a real implementation you might need more robust parsing
+            if (domainStr.startsWith('[')) {
+              searchDomain.value = JSON.parse(domainStr)
+            } else {
+              // Handle other domain formats as needed
+              searchDomain.value = []
+            }
+          } catch (e) {
+            console.warn('Could not parse search domain:', searchElement.getAttribute('domain'))
+            searchDomain.value = []
+          }
+        }
+        
+        // Extract filters
+        const filterElements = xmlDoc.querySelectorAll('filter')
+        const filters = []
+        for (let i = 0; i < filterElements.length; i++) {
+          const filterElement = filterElements[i]
+          const filter = {
+            name: filterElement.getAttribute('name'),
+            string: filterElement.getAttribute('string'),
+            domain: filterElement.getAttribute('domain'),
+            context: filterElement.getAttribute('context')
+          }
+          filters.push(filter)
+        }
+        
+        // Extract group_by elements
+        const groupByElements = xmlDoc.querySelectorAll('groupby')
+        const groupBys = []
+        for (let i = 0; i < groupByElements.length; i++) {
+          const groupByElement = groupByElements[i]
+          const groupBy = {
+            name: groupByElement.getAttribute('name'),
+            string: groupByElement.getAttribute('string')
+          }
+          groupBys.push(groupBy)
+        }
+        
+        // Store filters and group_bys
+        searchFilters.value = [...filters, ...groupBys]
+        
+        console.log('Extracted search domain:', searchDomain.value)
+        console.log('Extracted search filters:', searchFilters.value)
+      } catch (error) {
+        console.error('Error processing search view:', error)
+        searchFilters.value = []
+        searchDomain.value = []
+      }
+    }
     
     // Watch for changes in props
     watch(() => props.action, (newAction, oldAction) => {
@@ -180,7 +250,7 @@ export default {
         await loadModelFields()
         
         // Build domain filter
-        const domain = buildDomainFilter()
+        const domain = buildDomainFilter(props.actionDetails)
         
         // Fetch records from the model using the correct endpoint
         const webSearchReadRequest = {
@@ -189,11 +259,27 @@ export default {
           params: {
             model: props.modelName,
             method: 'web_search_read',
-            args: [
-              domain, // Domain as first argument
-              fields.value.map(field => field.name) // Fields as second argument
-            ],
+            args: [],
             kwargs: {
+              specification: (() => {
+                const spec = {};
+                fields.value.forEach(field => {
+                  // Handle special fields with known nested structures
+                  if (field.name === 'tag_ids') {
+                    spec[field.name] = { fields: { display_name: {}, color: {} } };
+                  } else if (field.name === 'currency_id' || field.name === 'company_id' || field.name === 'activity_ids') {
+                    spec[field.name] = { fields: {} };
+                  } else if (field.relation) {
+                    // For other relation fields, include display_name by default
+                    spec[field.name] = { fields: { display_name: {} } };
+                  } else {
+                    // For regular fields, empty object
+                    spec[field.name] = {};
+                  }
+                });
+                return spec;
+              })(),
+              domain: domain,
               limit: 80,
               offset: 0,
               order: '' // No specific ordering
@@ -247,7 +333,7 @@ export default {
             model: props.modelName,
             method: 'get_views',
             args: [
-              [[false, 'list'], [false, 'form']] // Get list and form views
+              [[false, 'list'], [false, 'form'], [false, 'search'], [false, 'kanban']] // Get list and form views
             ],
             kwargs: {
               options: {
@@ -268,6 +354,14 @@ export default {
         
         if (response.data.result) {
           const result = response.data.result
+          
+          // Extract search view definition if available
+          let searchViewDef = null
+          if (result.views && result.views.search) {
+            searchViewDef = result.views.search
+            // Process search view to extract filters and domains
+            processSearchView(searchViewDef)
+          }
           
           // Extract list view definition
           let listViewDef = null
@@ -305,8 +399,8 @@ export default {
               const fieldName = fieldElement.getAttribute('name')
               
               // Log each field element we're processing
-              console.log('Processing field element:', fieldElement)
-              console.log('Field name:', fieldName)
+              // console.log('Processing field element:', fieldElement)
+              // console.log('Field name:', fieldName)
               
               // Skip if no field name
               if (!fieldName) {
@@ -341,9 +435,9 @@ export default {
                   ...fieldObj,
                   ...fieldDefinitions[fieldName]
                 }
-                console.log('Field definition found for:', fieldName)
+                // console.log('Field definition found for:', fieldName)
               } else {
-                console.log('No field definition found for:', fieldName, 'Using defaults')
+                // console.log('No field definition found for:', fieldName, 'Using defaults')
               }
               
               // Extract additional attributes from the XML element
@@ -353,7 +447,7 @@ export default {
                 fieldAttributes[attr.name] = attr.value
               }
               
-              console.log('Field attributes for', fieldName, ':', fieldAttributes)
+              // console.log('Field attributes for', fieldName, ':', fieldAttributes)
               
               fieldList.push({
                 ...fieldObj,
@@ -393,8 +487,84 @@ export default {
     }
     
     // Build domain filter based on action domain and search query
-    const buildDomainFilter = () => {
+    const buildDomainFilter = (actionDetails = null) => {
       let domain = []
+
+      
+      // Apply search domain from search view if available
+      if (searchDomain.value && searchDomain.value.length > 0) {
+        domain = [...searchDomain.value]
+      }
+      
+      // Check for default_search filters in action context
+      if (actionDetails && actionDetails.context) {
+        // Parse context if it's a string
+        let context = actionDetails.context;
+        if (typeof actionDetails.context === 'string') {
+          try {
+            // Try to parse as JSON first
+            context = JSON.parse(actionDetails.context);
+          } catch (e) {
+            // If JSON parsing fails, try a simpler approach for common cases
+            try {
+              // Handle common Python dict representations
+              const cleanedContext = actionDetails.context
+                .replace(/'/g, '"')    // Replace single quotes with double quotes
+                .replace(/None/g, 'null')   // Replace None with null
+                .replace(/True/g, 'true')   // Replace True with true
+                .replace(/False/g, 'false'); // Replace False with false
+              context = JSON.parse(cleanedContext);
+            } catch (e2) {
+              console.warn('Could not parse context string:', actionDetails.context, e2);
+              context = {};
+            }
+          }
+        }
+        
+        // Look for keys that start with "default_search_"
+        for (const key in context) {
+          if (key.startsWith('search_default_')) {
+            const filterName = key.substring('search_default_'.length)
+            // Find the filter with this name
+            const filter = searchFilters.value.find(f => f.name === filterName)
+
+            console.log('filter===',filter)
+            if (filter && filter.domain) {
+              try {
+                // Parse the domain string into a proper domain object
+                let filterDomain = []
+                if (typeof filter.domain === 'string') {
+                  // Handle different domain formats
+                  if (filter.domain.startsWith('[')) {
+                    // Try to parse as Python-like format
+                    const pythonLikeJson = filter.domain
+                      .replace(/\(/g, '[')
+                      .replace(/\)/g, ']')
+                      .replace(/'/g, '"')
+                      .replace(/None/g, 'null')
+                      .replace(/True/g, 'true')
+                      .replace(/False/g, 'false')
+                    filterDomain = JSON.parse(pythonLikeJson)
+                  }
+                } else if (Array.isArray(filter.domain)) {
+                  filterDomain = [...filter.domain]
+                }
+
+                console.log('filterDomain==',filterDomain)
+                
+                // Combine with existing domain
+                if (domain.length > 0 && filterDomain.length > 0) {
+                  domain = ['&', ...domain, ...filterDomain]
+                } else if (filterDomain.length > 0) {
+                  domain = [...filterDomain]
+                }
+              } catch (e) {
+                console.warn('Could not parse filter domain:', filter.domain, e)
+              }
+            }
+          }
+        }
+      }
       
       // Apply action domain if exists
       if (props.action.domain) {
@@ -408,10 +578,11 @@ export default {
           // 4. Empty string: ""
           // 5. Null/undefined
           
+          let actionDomain = []
           if (Array.isArray(props.action.domain)) {
             // Already an array
-            domain = [...props.action.domain]
-            console.log('Domain is already an array:', domain)
+            actionDomain = [...props.action.domain]
+            console.log('Domain is already an array:', actionDomain)
           } else if (typeof props.action.domain === 'string' && props.action.domain.trim() !== '') {
             // String that might be JSON or Python format
             const trimmedDomain = props.action.domain.trim()
@@ -420,8 +591,8 @@ export default {
             try {
               const parsed = JSON.parse(trimmedDomain)
               if (Array.isArray(parsed)) {
-                domain = [...parsed]
-                console.log('Parsed domain from JSON:', domain)
+                actionDomain = [...parsed]
+                console.log('Parsed domain from JSON:', actionDomain)
               } else {
                 console.warn('Parsed domain is not an array:', parsed)
               }
@@ -446,8 +617,8 @@ export default {
                 
                 const parsed = JSON.parse(pythonLikeJson)
                 if (Array.isArray(parsed)) {
-                  domain = [...parsed]
-                  console.log('Parsed domain from converted Python format:', domain)
+                  actionDomain = [...parsed]
+                  console.log('Parsed domain from converted Python format:', actionDomain)
                 } else {
                   console.warn('Parsed domain from Python format is not an array:', parsed)
                 }
@@ -458,6 +629,13 @@ export default {
           } else if (props.action.domain === null || props.action.domain === undefined) {
             // Domain is null or undefined, keep empty domain
             console.log('Domain is null or undefined')
+          }
+          
+          // Combine search domain and action domain
+          if (domain.length > 0 && actionDomain.length > 0) {
+            domain = ['&', ...domain, ...actionDomain]
+          } else if (actionDomain.length > 0) {
+            domain = [...actionDomain]
           }
         } catch (e) {
           console.warn('Failed to process action domain:', e)
@@ -482,8 +660,8 @@ export default {
       
       console.log('Built domain filter:', domain)
       return domain
+
     }
-    
     // Handle search input change
     const onSearchChange = () => {
       // Debounce search or apply immediately
@@ -543,6 +721,8 @@ export default {
       filteredRecords,
       currentView,
       fields,
+      searchFilters,
+      searchDomain,
       availableViews,
       loadRecords,
       onSearchChange,

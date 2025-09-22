@@ -4,7 +4,7 @@
     <nav class="top-nav">
       <div class="nav-left">
         <div class="nav-brand" @click="goToMenuPage">
-          <h3>Odoo Client</h3>
+          <h3>XERPIUM</h3>
         </div>
         <!-- Submenu hierarchy display with popups -->
         <div class="nav-links" v-if="submenuHierarchy.length > 0">
@@ -69,6 +69,7 @@
           v-if="currentAction && currentModelName"
           :model-name="currentModelName"
           :action="currentAction"
+          :action-details="currentAction"
         />
         
         <!-- Menu Grid (only shown when no action is selected) -->
@@ -145,18 +146,19 @@ export default {
     })
 
     // Load user info and menus from localStorage on component mount
-    onMounted(() => {
+    onMounted(async () => {
       // Load user info
       userInfo.value.username = localStorage.getItem('odooUsername') || ''
       userInfo.value.database = localStorage.getItem('odooDatabase') || ''
       userInfo.value.serverUrl = localStorage.getItem('odooServerUrl') || ''
       
       // Load menus
-      loadMenus()
+      await loadMenus()
     })
 
-    const loadMenus = () => {
+    const loadMenus = async () => {
       try {
+        // Try to load menus from localStorage first
         const menusData = localStorage.getItem('odooMenus')
         console.log('Menus data from localStorage:', menusData)
         if (menusData) {
@@ -172,9 +174,50 @@ export default {
             children: getMenuChildren(menu.id)
           }))
           console.log('Top level menus:', topLevelMenus.value)
+        } else {
+          // If no menus in localStorage, fetch them from the server
+          await fetchMenusFromServer()
         }
       } catch (err) {
         console.error('Error loading menus:', err)
+        topLevelMenus.value = []
+      }
+    }
+
+    const fetchMenusFromServer = async () => {
+      try {
+        // Fetch menus from the server using /web/webclient/load_menus endpoint
+        const menusRequest = {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {},
+          id: Date.now()
+        }
+        
+        console.log('Menus Load Request:', menusRequest)
+        
+        const endpointUrl = `/web/webclient/load_menus`
+        const response = await axios.post(endpointUrl, menusRequest)
+        console.log('Menus Load Response:', response)
+        
+        if (response.data.result) {
+          const menus = response.data.result
+          // Store menus in localStorage
+          localStorage.setItem('odooMenus', JSON.stringify(menus))
+          
+          // Get top-level menus (those without a parent)
+          topLevelMenus.value = Object.values(menus).filter(menu => 
+            !menu.parent_id || menu.parent_id === false
+          ).map(menu => ({
+            id: menu.id,
+            name: menu.name,
+            action: menu.action, // Include the action field
+            children: getMenuChildren(menu.id)
+          }))
+          console.log('Top level menus:', topLevelMenus.value)
+        }
+      } catch (error) {
+        console.error('Error fetching menus from server:', error)
         topLevelMenus.value = []
       }
     }
@@ -220,35 +263,24 @@ export default {
         
         console.log('Fetching action:', { actionModel, actionId })
         
-        // Fetch action details
+        // Fetch action details using /web/action/load endpoint
         const actionRequest = {
           jsonrpc: '2.0',
           method: 'call',
           params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              localStorage.getItem('odooDatabase'),
-              parseInt(localStorage.getItem('odooUserId')),
-              localStorage.getItem('odooPassword'),
-              actionModel,
-              'read',
-              [[actionId]],
-              {
-                fields: ['id', 'name', 'res_model', 'view_mode', 'domain', 'context']
-              }
-            ]
+            action_id: actionId
           },
-          id: Date.now() // Unique ID for the request
+          id: Date.now()
         }
         
-        console.log('Action Request:', actionRequest)
+        console.log('Action Load Request:', actionRequest)
         
-        const response = await axios.post('/jsonrpc', actionRequest)
-        console.log('Action Response:', response)
+        const endpointUrl = `/web/action/load`
+        const response = await axios.post(endpointUrl, actionRequest)
+        console.log('Action Load Response:', response)
         
-        if (response.data.result && response.data.result.length > 0) {
-          const action = response.data.result[0]
+        if (response.data.result) {
+          const action = response.data.result
           console.log('Action details:', action)
           
           // Create a new object to ensure reactivity
