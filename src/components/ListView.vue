@@ -8,53 +8,76 @@
       <p>No records found</p>
     </div>
     
-    <div v-else class="table-container">
-      <table class="list-table">
-        <thead>
-          <tr>
-            <th 
-              v-for="field in fields" 
-              :key="field.name"
-              class="table-header"
+    <div v-else>
+      <!-- Pagination controls at the top -->
+      <div class="pagination" v-if="records.length > 0">
+        <div class="pagination-controls">
+          <div class="rows-per-page">
+            <label for="rowsPerPage">Rows per page:</label>
+            <select id="rowsPerPage" :value="itemsPerPage" @change="onRowsPerPageChange">
+              <option v-for="option in rowsPerPageOptions" :key="option" :value="option" :selected="option === itemsPerPage">
+                {{ option }}
+              </option>
+            </select>
+          </div>
+          
+          <div class="page-navigation">
+            <button class="btn btn-outline" :disabled="currentPage === 1" @click="firstPage">First</button>
+            <button class="btn btn-outline" :disabled="currentPage === 1" @click="prevPage">Previous</button>
+            <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+            <button class="btn btn-outline" :disabled="currentPage === totalPages" @click="nextPage">Next</button>
+            <button class="btn btn-outline" :disabled="currentPage === totalPages" @click="lastPage">Last</button>
+          </div>
+          
+          <div class="page-info-detail">
+            {{ (currentPage - 1) * itemsPerPage + 1 }}-{{ Math.min(currentPage * itemsPerPage, totalRecords) }} of {{ totalRecords }}
+          </div>
+        </div>
+      </div>
+      
+      <!-- Table container -->
+      <div class="table-container">
+        <table class="list-table">
+          <thead>
+            <tr>
+              <th 
+                v-for="field in displayableFields" 
+                :key="field.name"
+                class="table-header"
+              >
+                {{ field.string || field.name }}
+              </th>
+              <th class="actions-header">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              v-for="record in paginatedRecords" 
+              :key="record.id"
+              class="table-row"
+              @click="onRowClick(record)"
             >
-              {{ field.string || field.name }}
-            </th>
-            <th class="actions-header">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr 
-            v-for="record in records" 
-            :key="record.id"
-            class="table-row"
-            @click="onRowClick(record)"
-          >
-            <td 
-              v-for="field in fields" 
-              :key="field.name"
-              class="table-cell"
-            >
-              {{ formatFieldValue(record[field.name], field) }}
-            </td>
-            <td class="actions-cell">
-              <button class="action-button" @click.stop="editRecord(record)">Edit</button>
-              <button class="action-button delete" @click.stop="deleteRecord(record)">Delete</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    
-    <div class="pagination" v-if="records.length > 0">
-      <button class="btn btn-outline" :disabled="currentPage === 1" @click="prevPage">Previous</button>
-      <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-      <button class="btn btn-outline" :disabled="currentPage === totalPages" @click="nextPage">Next</button>
+              <td 
+                v-for="field in displayableFields" 
+                :key="field.name"
+                class="table-cell"
+              >
+                {{ formatFieldValue(record[field.name], field) }}
+              </td>
+              <td class="actions-cell">
+                <button class="action-button" @click.stop="editRecord(record)">Edit</button>
+                <button class="action-button delete" @click.stop="deleteRecord(record)">Delete</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 
 export default {
   name: 'ListView',
@@ -74,28 +97,43 @@ export default {
     loading: {
       type: Boolean,
       default: false
+    },
+    totalRecords: {
+      type: Number,
+      default: 0
+    },
+    currentPage: {
+      type: Number,
+      default: 1
+    },
+    itemsPerPage: {
+      type: Number,
+      default: 20
     }
   },
-  emits: ['record-click'],
+  emits: ['record-click', 'page-change', 'items-per-page-change'],
   setup(props, { emit }) {
-    const currentPage = ref(1)
-    const itemsPerPage = ref(20)
+    const rowsPerPageOptions = [10, 20, 50, 100]
     
     // Computed properties for pagination
     const totalPages = computed(() => {
-      return Math.ceil(props.records.length / itemsPerPage.value)
+      return Math.ceil(props.totalRecords / props.itemsPerPage)
     })
     
     const paginatedRecords = computed(() => {
-      const start = (currentPage.value - 1) * itemsPerPage.value
-      const end = start + itemsPerPage.value
-      return props.records.slice(start, end)
+      // For server-side pagination, we use all records since they're already paginated
+      return props.records
+    })
+    
+    // Computed property to filter out one2many and many2many fields
+    const displayableFields = computed(() => {
+      return props.fields.filter(field => {
+        return field.type !== 'one2many' && field.type !== 'many2many'
+      })
     })
     
     // Watch for changes in records to reset pagination
-    watch(() => props.records, () => {
-      currentPage.value = 1
-    })
+    // Not needed for server-side pagination
     
     // Format field values based on their type and properties
     const formatFieldValue = (value, field) => {
@@ -127,11 +165,15 @@ export default {
           }
           return value.toString()
         case 'many2one':
-          // Handle many2one fields (usually [id, name] format)
+          // Handle many2one fields (could be [id, name] format or object with display_name)
           if (Array.isArray(value) && value.length >= 2) {
             return value[1] // Return the display name
+          } else if (value && typeof value === 'object' && value.display_name) {
+            return value.display_name // Return the display_name property
+          } else if (value && typeof value === 'object' && value.name) {
+            return value.name // Fallback to name property
           }
-          return value.toString()
+          return value ? value.toString() : ''
         case 'many2many':
         case 'one2many':
           // Handle relational fields
@@ -172,29 +214,49 @@ export default {
     }
     
     // Pagination functions
+    const firstPage = () => {
+      if (props.currentPage > 1) {
+        emit('page-change', 1)
+      }
+    }
+    
     const prevPage = () => {
-      if (currentPage.value > 1) {
-        currentPage.value--
+      if (props.currentPage > 1) {
+        emit('page-change', props.currentPage - 1)
       }
     }
     
     const nextPage = () => {
-      if (currentPage.value < totalPages.value) {
-        currentPage.value++
+      if (props.currentPage < totalPages.value) {
+        emit('page-change', props.currentPage + 1)
       }
     }
     
+    const lastPage = () => {
+      if (props.currentPage < totalPages.value) {
+        emit('page-change', totalPages.value)
+      }
+    }
+    
+    const onRowsPerPageChange = (event) => {
+      const newItemsPerPage = parseInt(event.target.value)
+      emit('items-per-page-change', newItemsPerPage)
+    }
+    
     return {
-      currentPage,
-      itemsPerPage,
+      rowsPerPageOptions,
       totalPages,
       paginatedRecords,
+      displayableFields,
       formatFieldValue,
       onRowClick,
       editRecord,
       deleteRecord,
+      firstPage,
       prevPage,
-      nextPage
+      nextPage,
+      lastPage,
+      onRowsPerPageChange
     }
   }
 }
@@ -229,6 +291,7 @@ export default {
   color: #374151;
   background-color: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
+  position: relative;
 }
 
 .table-row {
@@ -251,6 +314,7 @@ export default {
   text-align: right;
   background-color: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
+  position: relative;
 }
 
 .actions-cell {
@@ -284,17 +348,60 @@ export default {
 }
 
 .pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
   margin-top: 20px;
   padding: 15px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.rows-per-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rows-per-page label {
+  font-weight: 500;
+  color: #374151;
+}
+
+.rows-per-page select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background-color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.rows-per-page select:focus {
+  outline: none;
+  border-color: #409eff;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
+}
+
+.page-navigation {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .page-info {
   font-weight: 500;
   color: #374151;
+}
+
+.page-info-detail {
+  font-size: 0.9rem;
+  color: #6c757d;
+  white-space: nowrap;
 }
 
 .btn:disabled {
@@ -304,5 +411,25 @@ export default {
 
 .btn-outline {
   padding: 6px 12px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .page-navigation {
+    justify-content: center;
+  }
+  
+  .rows-per-page {
+    justify-content: center;
+  }
+  
+  .page-info-detail {
+    text-align: center;
+  }
 }
 </style>

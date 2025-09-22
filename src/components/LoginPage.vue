@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-form">
       <div class="app-logo">
-        <h1>Odoo Client</h1>
+        <h1>XERPIUM</h1>
       </div>
       <h2>Sign in to Odoo</h2>
       <form @submit.prevent="handleLogin">

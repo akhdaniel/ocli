@@ -164,13 +164,19 @@ export default {
         if (menusData) {
           const menus = JSON.parse(menusData)
           console.log('Parsed menus:', menus)
-          // Get top-level menus (those without a parent)
+          // Get top-level menus (those without a parent), sorted by sequence
           topLevelMenus.value = Object.values(menus).filter(menu => 
             !menu.parent_id || menu.parent_id === false
-          ).map(menu => ({
+          ).sort((a, b) => {
+            // Sort by sequence, with fallback to id if sequence is not available
+            const seqA = a.sequence !== undefined ? a.sequence : a.id;
+            const seqB = b.sequence !== undefined ? b.sequence : b.id;
+            return seqA - seqB;
+          }).map(menu => ({
             id: menu.id,
             name: menu.name,
             action: menu.action, // Include the action field
+            sequence: menu.sequence, // Include sequence for reference
             children: getMenuChildren(menu.id)
           }))
           console.log('Top level menus:', topLevelMenus.value)
@@ -205,13 +211,19 @@ export default {
           // Store menus in localStorage
           localStorage.setItem('odooMenus', JSON.stringify(menus))
           
-          // Get top-level menus (those without a parent)
+          // Get top-level menus (those without a parent), sorted by sequence
           topLevelMenus.value = Object.values(menus).filter(menu => 
             !menu.parent_id || menu.parent_id === false
-          ).map(menu => ({
+          ).sort((a, b) => {
+            // Sort by sequence, with fallback to id if sequence is not available
+            const seqA = a.sequence !== undefined ? a.sequence : a.id;
+            const seqB = b.sequence !== undefined ? b.sequence : b.id;
+            return seqA - seqB;
+          }).map(menu => ({
             id: menu.id,
             name: menu.name,
             action: menu.action, // Include the action field
+            sequence: menu.sequence, // Include sequence for reference
             children: getMenuChildren(menu.id)
           }))
           console.log('Top level menus:', topLevelMenus.value)
@@ -239,10 +251,30 @@ export default {
         // Clear any current action when navigating to a menu with children
         currentAction.value = null
         currentModelName.value = null
+        
+        // Automatically open the first lowest level submenu
+        // Find the first leaf menu by traversing down the first branch
+        let currentMenu = children[0]
+        
+        if (currentMenu) {
+          let currentChildren = getMenuChildren(currentMenu.id)
+          let depth = 0
+          while (currentChildren.length > 0 && depth < 10) { // Safety limit to prevent infinite loops
+            currentMenu = currentChildren[0]
+            if (!currentMenu) break
+            currentChildren = getMenuChildren(currentMenu.id)
+            depth++
+          }
+          
+          // Now currentMenu should be a leaf menu, fetch its action
+          if (currentMenu) {
+            fetchMenuAction(currentMenu)
+          }
+        }
       }
       
       // In a real implementation, this would navigate to the specific menu view
-      console.log('Navigating to menu:', menu)
+      console.log('Navigating to menu:', menu.name)
     }
     
     const fetchMenuAction = async (menu) => {
@@ -299,8 +331,13 @@ export default {
     }
     
     const buildSubmenuHierarchy = (menu) => {
-      // Update the submenu hierarchy with the children of the selected menu
-      submenuHierarchy.value = menu.children || []
+      // Update the submenu hierarchy with the children of the selected menu, sorted by sequence
+      submenuHierarchy.value = (menu.children || []).sort((a, b) => {
+        // Sort by sequence, with fallback to id if sequence is not available
+        const seqA = a.sequence !== undefined ? a.sequence : a.id;
+        const seqB = b.sequence !== undefined ? b.sequence : b.id;
+        return seqA - seqB;
+      });
       
       console.log('Submenu hierarchy updated:', submenuHierarchy.value)
     }
@@ -331,12 +368,19 @@ export default {
             id: menu.id,
             name: menu.name,
             action: menu.action, // Include the action field
-            children: getMenuChildren(menu.id)
+            sequence: menu.sequence, // Include sequence for reference
+            children: getMenuChildren(menu.id) // Recursively get children
           })
         }
       }
       
-      return children
+      // Sort children by sequence
+      return children.sort((a, b) => {
+        // Sort by sequence, with fallback to id if sequence is not available
+        const seqA = a.sequence !== undefined ? a.sequence : a.id;
+        const seqB = b.sequence !== undefined ? b.sequence : b.id;
+        return seqA - seqB;
+      });
     }
 
     const handleLogout = () => {
@@ -354,7 +398,13 @@ export default {
     }
 
     const goToMenuPage = () => {
-      // Already on the menu page, so just scroll to top
+      // Reset to main menu page
+      selectedMenu.value = null
+      currentAction.value = null
+      currentModelName.value = null
+      submenuHierarchy.value = []
+      activePopup.value = null
+      // Scroll to top
       window.scrollTo(0, 0)
     }
 

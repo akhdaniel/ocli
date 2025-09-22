@@ -46,7 +46,12 @@
         :fields="fields"
         :records="filteredRecords"
         :loading="loading"
+        :total-records="totalRecords"
+        :current-page="currentPage"
+        :items-per-page="itemsPerPage"
         @record-click="onRecordClick"
+        @page-change="onPageChange"
+        @items-per-page-change="onItemsPerPageChange"
       />
       
       <!-- Kanban View -->
@@ -119,6 +124,12 @@ export default {
     const fields = ref([])
     const searchFilters = ref([])
     const searchDomain = ref([])
+    // Pagination state
+    const currentPage = ref(1)
+    const itemsPerPage = ref(20)
+    const totalRecords = ref(0)
+    // Model fields information
+    const modelFieldsInfo = ref({})
     
     // Process search view to extract filters and domains
     const processSearchView = (searchViewDef) => {
@@ -241,6 +252,18 @@ export default {
       }
     })
     
+    // Pagination methods
+    const onPageChange = async (page) => {
+      currentPage.value = page
+      await loadRecords()
+    }
+    
+    const onItemsPerPageChange = async (itemsPerPageValue) => {
+      itemsPerPage.value = itemsPerPageValue
+      currentPage.value = 1
+      await loadRecords()
+    }
+    
     // Load records from Odoo using /web/dataset/call_kw/{model_name}/web_search_read endpoint
     const loadRecords = async () => {
       try {
@@ -264,24 +287,35 @@ export default {
               specification: (() => {
                 const spec = {};
                 fields.value.forEach(field => {
-                  // Handle special fields with known nested structures
-                  if (field.name === 'tag_ids') {
-                    spec[field.name] = { fields: { display_name: {}, color: {} } };
-                  } else if (field.name === 'currency_id' || field.name === 'company_id' || field.name === 'activity_ids') {
-                    spec[field.name] = { fields: {} };
-                  } else if (field.relation) {
-                    // For other relation fields, include display_name by default
-                    spec[field.name] = { fields: { display_name: {} } };
-                  } else {
-                    // For regular fields, empty object
-                    spec[field.name] = {};
+                  // Handle different field types for specification
+                  switch (field.type) {
+                    case 'many2one':
+                      // For many2one fields, request display_name
+                      spec[field.name] = { fields: { display_name: {} } };
+                      break;
+                    case 'one2many':
+                    case 'many2many':
+                      // For relational fields, request basic info
+                      spec[field.name] = { fields: {} };
+                      break;
+                    case 'monetary':
+                      // For monetary fields, also get currency info
+                      spec[field.name] = {};
+                      if (field.currency_field) {
+                        spec[field.name] = { currency_field: {} };
+                      }
+                      break;
+                    default:
+                      // For regular fields, empty object
+                      spec[field.name] = {};
+                      break;
                   }
                 });
                 return spec;
               })(),
               domain: domain,
-              limit: 80,
-              offset: 0,
+              limit: itemsPerPage.value,
+              offset: (currentPage.value - 1) * itemsPerPage.value,
               order: '' // No specific ordering
             }
           },
@@ -304,12 +338,21 @@ export default {
           if (Array.isArray(result)) {
             // Standard search_read format
             recordsData = result
+            totalRecords.value = result.length
           } else if (result.records) {
             // web_search_read format
             recordsData = result.records
+            // Update total records count if available
+            if (result.length !== undefined) {
+              totalRecords.value = result.length
+            } else {
+              // Fallback to records length if total length not available
+              totalRecords.value = result.records.length
+            }
           } else {
             // Fallback
             recordsData = []
+            totalRecords.value = 0
           }
           
           records.value = recordsData
@@ -354,6 +397,13 @@ export default {
         
         if (response.data.result) {
           const result = response.data.result
+          console.log('Get Views Response Result:', result)
+          
+          // Save model fields information to a variable for later use
+          if (result.models && result.models[props.modelName]) {
+            modelFieldsInfo.value = result.models[props.modelName]
+            console.log('Model fields information:', modelFieldsInfo.value)
+          }
           
           // Extract search view definition if available
           let searchViewDef = null
@@ -375,6 +425,11 @@ export default {
           if (listViewDef) {
             // Extract fields from the response
             const fieldDefinitions = listViewDef.fields || {}
+            console.log('Field definitions from response:', fieldDefinitions)
+            
+            // Also check if there are model fields information in the result
+            console.log('Full result structure:', result)
+
             
             // Parse the XML architecture to get field order and visibility
             const parser = new DOMParser()
@@ -411,14 +466,14 @@ export default {
               // Check if field should be invisible in column
               const columnInvisible = fieldElement.getAttribute('column_invisible')
               if (columnInvisible === '1' || columnInvisible === 'true' || columnInvisible === 'True') {
-                console.log('Skipping column invisible field:', fieldName)
+                // console.log('Skipping column invisible field:', fieldName)
                 continue
               }
               
               // Check if field should be invisible (deprecated but still used)
               const invisible = fieldElement.getAttribute('invisible')
               if (invisible === '1' || invisible === 'true' || invisible === 'True') {
-                console.log('Skipping invisible field:', fieldName)
+                // console.log('Skipping invisible field:', fieldName)
                 continue
               }
               
@@ -429,15 +484,32 @@ export default {
                 string: fieldName.replace(/_/g, ' ') // Default string if not defined
               }
               
-              // Add field definition if available
+              // Add field definition if available from view
               if (fieldDefinitions[fieldName]) {
+                console.log('fieldDefinitions[fieldName]===', fieldDefinitions[fieldName])
+                // Merge field definition, ensuring type is correctly captured
                 fieldObj = {
-                  ...fieldObj,
+                  name: fieldName,
+                  type: fieldDefinitions[fieldName].type || 'char',
+                  string: fieldDefinitions[fieldName].string || fieldName.replace(/_/g, ' '),
+                  // Include all other field properties from the definition
                   ...fieldDefinitions[fieldName]
                 }
-                // console.log('Field definition found for:', fieldName)
+                console.log('Field definition from view for:', fieldName, 'Type:', fieldObj.type)
+              } 
+              // Fallback to model fields information if available
+              else if (modelFieldsInfo.value.fields && modelFieldsInfo.value.fields[fieldName]) {
+                // Use model field information
+                fieldObj = {
+                  name: fieldName,
+                  type: modelFieldsInfo.value.fields[fieldName].type || 'char',
+                  string: modelFieldsInfo.value.fields[fieldName].string || fieldName.replace(/_/g, ' '),
+                  // Include all other field properties from the model
+                  ...modelFieldsInfo.value.fields[fieldName]
+                }
+                console.log('Field definition from model for:', fieldName, 'Type:', fieldObj.type)
               } else {
-                // console.log('No field definition found for:', fieldName, 'Using defaults')
+                console.log('No field definition found for:', fieldName, 'Using defaults')
               }
               
               // Extract additional attributes from the XML element
@@ -723,6 +795,12 @@ export default {
       fields,
       searchFilters,
       searchDomain,
+      // Pagination state
+      currentPage,
+      itemsPerPage,
+      totalRecords,
+      // Model fields information
+      modelFieldsInfo,
       availableViews,
       loadRecords,
       onSearchChange,
@@ -730,7 +808,10 @@ export default {
       clearFilters,
       switchView,
       createRecord,
-      onRecordClick
+      onRecordClick,
+      // Pagination methods
+      onPageChange,
+      onItemsPerPageChange
     }
   }
 }

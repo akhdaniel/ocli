@@ -4,7 +4,7 @@
     <nav class="top-nav">
       <div class="nav-left">
         <div class="nav-brand" @click="goToMenuPage">
-          <h3>Odoo Client</h3>
+          <h3>XERPIUM</h3>
         </div>
       </div>
       <div class="nav-right">
