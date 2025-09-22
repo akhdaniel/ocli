@@ -60,9 +60,16 @@
       </div>
       
       <!-- Form View -->
-      <div v-else-if="currentView === 'form'" class="form-view">
-        <p>Form view would be implemented here</p>
-      </div>
+      <FormView 
+        v-if="currentView === 'form'"
+        :model-name="modelName"
+        :record-id="currentRecordId"
+        :form-definition="formDefinition"
+        :field-definitions="modelFieldsInfo.fields || {}"
+        @save="onFormSave"
+        @cancel="onFormCancel"
+        @close="onFormClose"
+      />
       
       <!-- Activity View -->
       <div v-else-if="currentView === 'activity'" class="activity-view">
@@ -81,6 +88,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import ListView from './ListView.vue'
+import FormView from './FormView.vue'
 
 // Check if DOMParser is available (it should be in modern browsers)
 if (typeof window !== 'undefined' && !window.DOMParser) {
@@ -98,7 +106,8 @@ if (typeof window !== 'undefined' && !window.DOMParser) {
 export default {
   name: 'ActionView',
   components: {
-    ListView
+    ListView,
+    FormView
   },
   props: {
     modelName: {
@@ -130,6 +139,9 @@ export default {
     const totalRecords = ref(0)
     // Model fields information
     const modelFieldsInfo = ref({})
+    // Form view state
+    const currentRecordId = ref(null)
+    const formDefinition = ref(null)
     
     // Process search view to extract filters and domains
     const processSearchView = (searchViewDef) => {
@@ -780,9 +792,89 @@ export default {
     }
     
     // Handle record click
-    const onRecordClick = (record) => {
+    const onRecordClick = async (record) => {
       console.log('Record clicked:', record)
-      // Implementation for handling record click (e.g., open form view)
+      // Set the current record ID for editing
+      currentRecordId.value = record.id
+      // Load form definition if not already loaded
+      if (!formDefinition.value) {
+        await loadFormDefinition()
+      }
+      // Switch to form view
+      currentView.value = 'form'
+    }
+    
+    // Form event handlers
+    const onFormSave = (result) => {
+      console.log('Form saved:', result)
+      // Switch back to list view
+      currentView.value = 'list'
+      // Reload records to show updated data
+      loadRecords()
+    }
+    
+    const onFormCancel = () => {
+      // Switch back to list view
+      currentView.value = 'list'
+    }
+    
+    const onFormClose = () => {
+      // Switch back to list view
+      currentView.value = 'list'
+    }
+    
+    const loadFormDefinition = async () => {
+      try {
+        loading.value = true
+        
+        // Fetch form view definition using get_views endpoint
+        const getViewsRequest = {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: props.modelName,
+            method: 'get_views',
+            args: [
+              [[false, 'form']] // Get form view
+            ],
+            kwargs: {
+              options: {
+                toolbar: false,
+                load_filters: false
+              }
+            }
+          },
+          id: Date.now() + 2
+        }
+        
+        console.log('Get Form Views Request:', getViewsRequest)
+        
+        // Use the correct endpoint URL
+        const endpointUrl = `/web/dataset/call_kw/${props.modelName}/get_views`
+        const response = await axios.post(endpointUrl, getViewsRequest)
+        console.log('Get Form Views Response:', response)
+        
+        if (response.data.result) {
+          const result = response.data.result
+          
+          // Extract form view definition
+          let formViewDef = null
+          if (result.views && result.views.form) {
+            formViewDef = result.views.form
+          }
+          
+          if (formViewDef) {
+            formDefinition.value = formViewDef
+            console.log('Form definition loaded:', formViewDef)
+          } else {
+            console.log('No form view definition found')
+          }
+        }
+      } catch (error) {
+        console.error('Error loading form definition:', error)
+      } finally {
+        loading.value = false
+      }
     }
     
     return {
@@ -801,6 +893,9 @@ export default {
       totalRecords,
       // Model fields information
       modelFieldsInfo,
+      // Form view state
+      currentRecordId,
+      formDefinition,
       availableViews,
       loadRecords,
       onSearchChange,
@@ -811,7 +906,12 @@ export default {
       onRecordClick,
       // Pagination methods
       onPageChange,
-      onItemsPerPageChange
+      onItemsPerPageChange,
+      // Form methods
+      onFormSave,
+      onFormCancel,
+      onFormClose,
+      loadFormDefinition
     }
   }
 }
