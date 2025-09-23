@@ -642,6 +642,7 @@ export default {
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
+}
 .form-field.hidden {
   display: none;
 }
