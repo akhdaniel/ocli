@@ -329,8 +329,27 @@ export default {
         console.log('Action Load Request:', actionRequest)
         
         const endpointUrl = `/web/action/load`
-        const response = await axios.post(endpointUrl, actionRequest)
+        let response = await axios.post(endpointUrl, actionRequest)
         console.log('Action Load Response:', response)
+        
+        // Check if session has expired
+        if (response.data.error && response.data.error.data && response.data.error.data.name === 'odoo.exceptions.AccessDenied') {
+          console.log('Session expired, attempting to refresh...')
+          
+          // Try to refresh the session
+          const refreshSuccess = await refreshToken()
+          if (refreshSuccess) {
+            // Retry the action load request
+            console.log('Retrying action load after token refresh')
+            response = await axios.post(endpointUrl, actionRequest)
+            console.log('Retry Action Load Response:', response)
+          } else {
+            // Session refresh failed, redirect to login
+            console.log('Token refresh failed, redirecting to login')
+            handleLogout()
+            return
+          }
+        }
         
         if (response.data.result) {
           const action = response.data.result
@@ -346,14 +365,20 @@ export default {
           // Set the current model name
           currentModelName.value = modelName
           
-          // Log additional action details for debugging
-          console.log('Action view modes:', action.view_mode)
-          console.log('Action domain:', action.domain)
-          console.log('Action context:', action.context)
+          console.log('Action loaded successfully')
+        } else {
+          console.log('No action result in response')
+          actionError.value = 'No action data received'
         }
       } catch (error) {
         console.error('Error fetching menu action:', error)
         actionError.value = 'Failed to load menu action: ' + error.message
+        
+        // Check if it's a session-related error
+        if (error.response && error.response.status === 401) {
+          console.log('Session expired, redirecting to login')
+          handleLogout()
+        }
       } finally {
         currentActionLoading.value = false
       }
@@ -412,6 +437,70 @@ export default {
       });
     }
 
+    // Refresh authentication token/session
+    const refreshToken = async () => {
+      try {
+        console.log('Refreshing authentication token...')
+        
+        // Get authentication details from localStorage
+        const serverUrl = localStorage.getItem('odooServerUrl')
+        const database = localStorage.getItem('odooDatabase')
+        const username = localStorage.getItem('odooUsername')
+        const password = localStorage.getItem('odooPassword')
+        
+        // Check if we have all required authentication details
+        if (!serverUrl || !database || !username || !password) {
+          console.log('Missing authentication details')
+          return false
+        }
+        
+        // Create JSON-RPC request for authentication
+        const authRequest = {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            db: database,
+            login: username,
+            password: password
+          },
+          id: Date.now()
+        }
+        
+        console.log('Authentication Request:', authRequest)
+        
+        // Use the correct endpoint URL
+        const endpointUrl = `/jsonrpc`
+        const response = await axios.post(endpointUrl, authRequest)
+        console.log('Authentication Response:', response)
+        
+        if (response.data.result) {
+          const result = response.data.result
+          
+          // Check if authentication was successful
+          if (result.uid) {
+            console.log('Authentication successful, UID:', result.uid)
+            
+            // Update localStorage with new authentication details
+            localStorage.setItem('odooUserId', result.uid.toString())
+            localStorage.setItem('odooSessionId', result.session_id || '')
+            
+            console.log('Authentication token refreshed successfully')
+            return true
+          } else {
+            console.log('Authentication failed:', result)
+            return false
+          }
+        } else {
+          console.log('No result in authentication response')
+          return false
+        }
+      } catch (error) {
+        console.error('Error refreshing authentication token:', error)
+        return false
+      }
+    }
+    
+    // Handle logout and redirect to login page
     const handleLogout = () => {
       // Remove all authentication data from localStorage
       localStorage.removeItem('isLoggedIn')
@@ -420,6 +509,7 @@ export default {
       localStorage.removeItem('odooUserId')
       localStorage.removeItem('odooUsername')
       localStorage.removeItem('odooPassword')
+      localStorage.removeItem('odooSessionId')
       localStorage.removeItem('odooMenus')
       
       // Redirect to login page
@@ -492,7 +582,8 @@ export default {
       showPopup,
       hidePopup,
       handleLogout,
-      goToMenuPage
+      goToMenuPage,
+      refreshToken // Add the new function
     }
   }
 }

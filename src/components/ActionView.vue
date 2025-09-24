@@ -291,8 +291,10 @@ export default {
     // Load records from Odoo using /web/dataset/call_kw/{model_name}/web_search_read endpoint
     const loadRecords = async () => {
       try {
-        console.log('Loading records for model:', props.modelName)
         loading.value = true
+        error.value = null
+        
+        console.log('Loading records for model:', props.modelName)
         
         // Get fields to display
         await loadModelFields()
@@ -341,41 +343,152 @@ export default {
         
         // Use the correct endpoint URL
         const endpointUrl = `/web/dataset/call_kw/${props.modelName}/web_search_read`
-        const response = await axios.post(endpointUrl, webSearchReadRequest)
+        let response = await axios.post(endpointUrl, webSearchReadRequest)
         console.log('Web Search Read Response:', response)
+        
+        // Check if session has expired
+        if (response.data.error && response.data.error.data && response.data.error.data.name === 'odoo.exceptions.AccessDenied') {
+          console.log('Session expired in ActionView, attempting to refresh...')
+          
+          // Try to refresh the session
+          const refreshSuccess = await refreshToken()
+          if (refreshSuccess) {
+            // Retry the web search read request
+            console.log('Retrying web search read after token refresh')
+            response = await axios.post(endpointUrl, webSearchReadRequest)
+            console.log('Retry Web Search Read Response:', response)
+          } else {
+            // Session refresh failed, redirect to login
+            console.log('Token refresh failed in ActionView, redirecting to login')
+            handleLogout()
+            return
+          }
+        }
         
         if (response.data.result) {
           // Extract records from the response
           const result = response.data.result
           let recordsData = []
+          let totalRecordsCount = 0
           
           // Handle different response formats
           if (Array.isArray(result)) {
             // Standard search_read format
             recordsData = result
+            totalRecordsCount = result.length
           } else if (result.records) {
             // web_search_read format
             recordsData = result.records
             // Update total records count if available
             if (result.length !== undefined) {
-              totalRecords.value = result.length
+              totalRecordsCount = result.length
+            } else {
+              totalRecordsCount = result.records.length
             }
           } else {
             // Fallback
             recordsData = []
-            totalRecords.value = 0
+            totalRecordsCount = 0
           }
           
           records.value = recordsData
           filteredRecords.value = recordsData
+          totalRecords.value = totalRecordsCount
+          
           console.log('Records loaded:', recordsData)
+          console.log('Total records:', totalRecordsCount)
         }
       } catch (error) {
         console.error('Error loading records:', error)
-        error.value = 'Failed to load records'
+        error.value = 'Failed to load records: ' + error.message
+        
+        // Check if it's a session-related error
+        if (error.response && error.response.status === 401) {
+          console.log('Session expired in ActionView, redirecting to login')
+          handleLogout()
+        }
       } finally {
         loading.value = false
       }
+    }
+    
+    // Refresh authentication token/session
+    const refreshToken = async () => {
+      try {
+        console.log('Refreshing authentication token in ActionView...')
+        
+        // Get authentication details from localStorage
+        const serverUrl = localStorage.getItem('odooServerUrl')
+        const database = localStorage.getItem('odooDatabase')
+        const username = localStorage.getItem('odooUsername')
+        const password = localStorage.getItem('odooPassword')
+        
+        // Check if we have all required authentication details
+        if (!serverUrl || !database || !username || !password) {
+          console.log('Missing authentication details in ActionView')
+          return false
+        }
+        
+        // Create JSON-RPC request for authentication
+        const authRequest = {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            db: database,
+            login: username,
+            password: password
+          },
+          id: Date.now()
+        }
+        
+        console.log('Authentication Request in ActionView:', authRequest)
+        
+        // Use the correct endpoint URL
+        const endpointUrl = `/jsonrpc`
+        const response = await axios.post(endpointUrl, authRequest)
+        console.log('Authentication Response in ActionView:', response)
+        
+        if (response.data.result) {
+          const result = response.data.result
+          
+          // Check if authentication was successful
+          if (result.uid) {
+            console.log('Authentication successful in ActionView, UID:', result.uid)
+            
+            // Update localStorage with new authentication details
+            localStorage.setItem('odooUserId', result.uid.toString())
+            localStorage.setItem('odooSessionId', result.session_id || '')
+            
+            console.log('Authentication token refreshed successfully in ActionView')
+            return true
+          } else {
+            console.log('Authentication failed in ActionView:', result)
+            return false
+          }
+        } else {
+          console.log('No result in authentication response in ActionView')
+          return false
+        }
+      } catch (error) {
+        console.error('Error refreshing authentication token in ActionView:', error)
+        return false
+      }
+    }
+    
+    // Handle logout and redirect to login page
+    const handleLogout = () => {
+      // Remove all authentication data from localStorage
+      localStorage.removeItem('isLoggedIn')
+      localStorage.removeItem('odooServerUrl')
+      localStorage.removeItem('odooDatabase')
+      localStorage.removeItem('odooUserId')
+      localStorage.removeItem('odooUsername')
+      localStorage.removeItem('odooPassword')
+      localStorage.removeItem('odooSessionId')
+      localStorage.removeItem('odooMenus')
+      
+      // Redirect to login page
+      window.location.href = '/'
     }
     
     // Load model fields using /web/dataset/call_kw/{model_name}/get_views endpoint
