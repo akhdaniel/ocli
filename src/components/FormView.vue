@@ -597,8 +597,6 @@ export default {
 .form-group-card:last-child {
   margin-bottom: 0;
 }
-  margin-bottom: 0;
-}
 
 
 /* Form Columns */
@@ -616,7 +614,7 @@ export default {
   flex: 1;
 }
 
-.columns-3 .form-column {
+.columns-3 .form-column 
 /* Form Fields */
 .form-field {
   margin-bottom: 20px;
@@ -627,6 +625,7 @@ export default {
 }
 .form-field {
   margin-bottom: 15px;
+}
 .form-label {
   display: block;
   margin-bottom: 8px;
@@ -709,6 +708,7 @@ export default {
   .form-actions {
     justify-content: center;
   }
+}
 
 @media (max-width: 768px) {
   .form-columns {

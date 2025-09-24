@@ -65,17 +65,21 @@
         </div>
         
         <!-- Action View -->
-        <ActionView 
-          v-if="currentAction && currentModelName"
-          :model-name="currentModelName"
-          :action="currentAction"
-          :action-details="currentAction"
-        />
-        <div v-else-if="currentActionLoading" class="loading-indicator">
+        <div v-if="currentActionLoading" class="loading-indicator">
           Loading action...
         </div>
         <div v-else-if="actionError" class="error-message">
           {{ actionError }}
+        </div>
+        <ActionView 
+          v-else-if="currentAction && currentModelName"
+          :model-name="currentModelName"
+          :action="currentAction"
+          :action-details="currentAction"
+        />
+        <div v-else-if="currentAction" class="debug-info">
+          <p>Current Action: {{ JSON.stringify(currentAction, null, 2) }}</p>
+          <p>Current Model Name: {{ currentModelName }}</p>
         </div>
         
         <!-- Menu Grid (only shown when no action is selected) -->
@@ -507,8 +511,18 @@ export default {
   color: #6c757d;
 }
 
-.error-message {
-  color: #dc3545;
+.debug-info {
+  padding: 20px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 6px;
+  margin: 20px 0;
+}
+
+.debug-info p {
+  margin: 0 0 10px 0;
+  font-family: monospace;
+  white-space: pre-wrap;
 }
 
 .top-nav {
