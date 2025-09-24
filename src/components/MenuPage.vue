@@ -346,10 +346,10 @@ export default {
           // Set the current model name
           currentModelName.value = modelName
           
-          console.log('Action loaded successfully')
-        } else {
-          console.log('No action result in response')
-          actionError.value = 'No action data received'
+          // Log additional action details for debugging
+          console.log('Action view modes:', action.view_mode)
+          console.log('Action domain:', action.domain)
+          console.log('Action context:', action.context)
         }
       } catch (error) {
         console.error('Error fetching menu action:', error)

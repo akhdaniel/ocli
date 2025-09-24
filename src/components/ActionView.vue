@@ -1,84 +1,86 @@
 <template>
   <div class="action-view">
-    <!-- Page Header -->
-    <div class="page-header">
-      <h1>{{ pageTitle }}</h1>
-      <div class="header-actions">
-        <button class="btn btn-primary" @click="createRecord">Create</button>
-      </div>
+    <div class="debug-info" v-if="debugMode">
+      <p>ActionView Props: {{ JSON.stringify({ modelName: modelName, action: action }, null, 2) }}</p>
     </div>
     
-    <!-- Filter Component -->
-    <div class="filter-section">
-      <div class="filter-container">
-        <input 
-          type="text" 
-          v-model="searchQuery" 
-          placeholder="Search..." 
-          class="search-input"
-          @input="onSearchChange"
+    <div v-if="loading" class="loading">
+      <p>Loading records...</p>
+    </div>
+    
+    <div v-else-if="error" class="error">
+      <p>{{ error }}</p>
+    </div>
+    
+    <div v-else class="view-content">
+      <!-- Page Header -->
+      <div class="page-header">
+        <h1>{{ pageTitle }}</h1>
+        <div class="header-actions">
+          <button class="btn btn-primary" @click="createRecord">Create</button>
+        </div>
+      </div>
+      
+      <!-- Filter Component -->
+      <div class="filter-section">
+        <div class="filter-container">
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="Search..." 
+            class="search-input"
+            @input="onSearchChange"
+          />
+          <button class="btn btn-secondary" @click="applyFilters">Apply Filters</button>
+          <button class="btn btn-outline" @click="clearFilters">Clear</button>
+        </div>
+      </div>
+      
+      <!-- View Type Selector -->
+      <div class="view-selector">
+        <div class="view-tabs">
+          <button 
+            v-for="view in availableViews" 
+            :key="view.type"
+            :class="['view-tab', { active: currentView === view.type }]"
+            @click="switchView(view.type)"
+          >
+            {{ view.label }}
+          </button>
+        </div>
+      </div>
+      
+      <!-- View Content -->
+      <div class="view-content">
+        <!-- List View -->
+        <ListView 
+          v-if="currentView === 'list'"
+          :model-name="modelName"
+          :fields="fields"
+          :records="filteredRecords"
+          :loading="loading"
+          @record-click="onRecordClick"
         />
-        <button class="btn btn-secondary" @click="applyFilters">Apply Filters</button>
-        <button class="btn btn-outline" @click="clearFilters">Clear</button>
-      </div>
-    </div>
-    
-    <!-- View Type Selector -->
-    <div class="view-selector">
-      <div class="view-tabs">
-        <button 
-          v-for="view in availableViews" 
-          :key="view.type"
-          :class="['view-tab', { active: currentView === view.type }]"
-          @click="switchView(view.type)"
-        >
-          {{ view.label }}
-        </button>
-      </div>
-    </div>
-    
-    <!-- View Content -->
-    <div class="view-content">
-      <!-- List View -->
-      <ListView 
-        v-if="currentView === 'list'"
-        :model-name="modelName"
-        :fields="fields"
-        :records="filteredRecords"
-        :loading="loading"
-        :total-records="totalRecords"
-        :current-page="currentPage"
-        :items-per-page="itemsPerPage"
-        @record-click="onRecordClick"
-        @page-change="onPageChange"
-        @items-per-page-change="onItemsPerPageChange"
-      />
-      
-      <!-- Kanban View -->
-      <div v-else-if="currentView === 'kanban'" class="kanban-view">
-        <p>Kanban view would be implemented here</p>
-      </div>
-      
-      <!-- Form View -->
-      <FormView 
-        v-if="currentView === 'form'"
-        :model-name="modelName"
-        :record-id="currentRecordId"
-        :form-definition="formDefinition"
-        :field-definitions="modelFieldsInfo.fields || {}"
-        @save="onFormSave"
-        @cancel="onFormCancel"
-        @close="onFormClose"
-      />
-      
-      <!-- Activity View -->
-      <div v-else-if="currentView === 'activity'" class="activity-view">
-        <p>Activity view would be implemented here</p>
-      </div>
-      
-      <!-- Default View -->
-      <div v-else class="default-view">
-        <p>Select a view type to display records</p>
+        
+        <!-- Kanban View -->
+        <div v-else-if="currentView === 'kanban'" class="kanban-view">
+          <p>Kanban view would be implemented here</p>
+        </div>
+        
+        <!-- Form View -->
+        <div v-else-if="currentView === 'form'" class="form-view">
+          <p>Form view would be implemented here</p>
+        </div>
+        
+        <!-- Activity View -->
+        <div v-else-if="currentView === 'activity'" class="activity-view">
+          <p>Activity view would be implemented here</p>
+        </div>
+        
+        <!-- Default View -->
+        <div v-else class="default-view">
+          <p>Select a view type to display records</p>
+        </div>
       </div>
     </div>
   </div>
@@ -88,7 +90,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from 'axios'
 import ListView from './ListView.vue'
-import FormView from './FormView.vue'
+// import FormView from './FormView.vue' // Commented out unused import
 
 // Check if DOMParser is available (it should be in modern browsers)
 if (typeof window !== 'undefined' && !window.DOMParser) {
@@ -106,8 +108,8 @@ if (typeof window !== 'undefined' && !window.DOMParser) {
 export default {
   name: 'ActionView',
   components: {
-    ListView,
-    FormView
+    ListView
+    // FormView // Commented out unused component
   },
   props: {
     modelName: {
@@ -126,9 +128,11 @@ export default {
   setup(props) {
     console.log('ActionView props received:', { modelName: props.modelName, action: props.action, actionDetails: props.actionDetails })
     
+    const debugMode = ref(true) // Set to false in production
     const pageTitle = ref(props.action.name || props.modelName)
     const searchQuery = ref('')
     const loading = ref(false)
+    const error = ref(null)
     const records = ref([])
     const filteredRecords = ref([])
     const currentView = ref('list')
@@ -261,8 +265,14 @@ export default {
     
     // Load records when component is mounted or when props change
     onMounted(() => {
+      console.log('ActionView mounted with props:', props)
       if (props.modelName && props.action) {
+        console.log('Loading records for model:', props.modelName)
         loadRecords()
+      } else {
+        console.log('Missing model name or action, skipping record loading')
+        console.log('Model name:', props.modelName)
+        console.log('Action:', props.action)
       }
     })
     
@@ -281,6 +291,7 @@ export default {
     // Load records from Odoo using /web/dataset/call_kw/{model_name}/web_search_read endpoint
     const loadRecords = async () => {
       try {
+        console.log('Loading records for model:', props.modelName)
         loading.value = true
         
         // Get fields to display
@@ -288,6 +299,7 @@ export default {
         
         // Build domain filter
         const domain = buildDomainFilter(props.actionDetails)
+        console.log('Built domain filter:', domain)
         
         // Fetch records from the model using the correct endpoint
         const webSearchReadRequest = {
@@ -301,28 +313,17 @@ export default {
               specification: (() => {
                 const spec = {};
                 fields.value.forEach(field => {
-                  // Handle different field types for specification
-                  switch (field.type) {
-                    case 'many2one':
-                      // For many2one fields, request display_name
-                      spec[field.name] = { fields: { display_name: {} } };
-                      break;
-                    case 'one2many':
-                    case 'many2many':
-                      // For relational fields, request basic info
-                      spec[field.name] = { fields: {} };
-                      break;
-                    case 'monetary':
-                      // For monetary fields, also get currency info
-                      spec[field.name] = {};
-                      if (field.currency_field) {
-                        spec[field.name] = { currency_field: {} };
-                      }
-                      break;
-                    default:
-                      // For regular fields, empty object
-                      spec[field.name] = {};
-                      break;
+                  // Handle special fields with known nested structures
+                  if (field.name === 'tag_ids') {
+                    spec[field.name] = { fields: { display_name: {}, color: {} } };
+                  } else if (field.name === 'currency_id' || field.name === 'company_id' || field.name === 'activity_ids') {
+                    spec[field.name] = { fields: {} };
+                  } else if (field.relation) {
+                    // For other relation fields, include display_name by default
+                    spec[field.name] = { fields: { display_name: {} } };
+                  } else {
+                    // For regular fields, empty object
+                    spec[field.name] = {};
                   }
                 });
                 return spec;
@@ -352,16 +353,12 @@ export default {
           if (Array.isArray(result)) {
             // Standard search_read format
             recordsData = result
-            totalRecords.value = result.length
           } else if (result.records) {
             // web_search_read format
             recordsData = result.records
             // Update total records count if available
             if (result.length !== undefined) {
               totalRecords.value = result.length
-            } else {
-              // Fallback to records length if total length not available
-              totalRecords.value = result.records.length
             }
           } else {
             // Fallback
@@ -371,9 +368,11 @@ export default {
           
           records.value = recordsData
           filteredRecords.value = recordsData
+          console.log('Records loaded:', recordsData)
         }
       } catch (error) {
         console.error('Error loading records:', error)
+        error.value = 'Failed to load records'
       } finally {
         loading.value = false
       }
@@ -577,19 +576,24 @@ export default {
       let domain = []
 
       
+      console.log('Building domain filter with actionDetails:', actionDetails)
+      
       // Apply search domain from search view if available
       if (searchDomain.value && searchDomain.value.length > 0) {
         domain = [...searchDomain.value]
+        console.log('Applied search domain:', domain)
       }
       
       // Check for default_search filters in action context
       if (actionDetails && actionDetails.context) {
+        console.log('Processing action context:', actionDetails.context)
         // Parse context if it's a string
         let context = actionDetails.context;
         if (typeof actionDetails.context === 'string') {
           try {
             // Try to parse as JSON first
             context = JSON.parse(actionDetails.context);
+            console.log('Parsed context from JSON:', context)
           } catch (e) {
             // If JSON parsing fails, try a simpler approach for common cases
             try {
@@ -600,6 +604,7 @@ export default {
                 .replace(/True/g, 'true')   // Replace True with true
                 .replace(/False/g, 'false'); // Replace False with false
               context = JSON.parse(cleanedContext);
+              console.log('Parsed context from cleaned Python format:', context)
             } catch (e2) {
               console.warn('Could not parse context string:', actionDetails.context, e2);
               context = {};
@@ -611,12 +616,15 @@ export default {
         for (const key in context) {
           if (key.startsWith('search_default_')) {
             const filterName = key.substring('search_default_'.length)
+            console.log('Found search_default filter:', filterName)
             // Find the filter with this name
             const filter = searchFilters.value.find(f => f.name === filterName)
+            console.log('Found filter:', filter)
 
             console.log('filter===',filter)
             if (filter && filter.domain) {
               try {
+                console.log('Processing filter domain:', filter.domain)
                 // Parse the domain string into a proper domain object
                 let filterDomain = []
                 if (typeof filter.domain === 'string') {
@@ -631,9 +639,11 @@ export default {
                       .replace(/True/g, 'true')
                       .replace(/False/g, 'false')
                     filterDomain = JSON.parse(pythonLikeJson)
+                    console.log('Parsed filter domain from Python format:', filterDomain)
                   }
                 } else if (Array.isArray(filter.domain)) {
                   filterDomain = [...filter.domain]
+                  console.log('Filter domain is already an array:', filterDomain)
                 }
 
                 console.log('filterDomain==',filterDomain)
@@ -641,8 +651,10 @@ export default {
                 // Combine with existing domain
                 if (domain.length > 0 && filterDomain.length > 0) {
                   domain = ['&', ...domain, ...filterDomain]
+                  console.log('Combined domain with filter:', domain)
                 } else if (filterDomain.length > 0) {
                   domain = [...filterDomain]
+                  console.log('Set domain to filter domain:', domain)
                 }
               } catch (e) {
                 console.warn('Could not parse filter domain:', filter.domain, e)
@@ -720,8 +732,10 @@ export default {
           // Combine search domain and action domain
           if (domain.length > 0 && actionDomain.length > 0) {
             domain = ['&', ...domain, ...actionDomain]
+            console.log('Combined search domain and action domain:', domain)
           } else if (actionDomain.length > 0) {
             domain = [...actionDomain]
+            console.log('Set domain to action domain:', domain)
           }
         } catch (e) {
           console.warn('Failed to process action domain:', e)
@@ -732,6 +746,7 @@ export default {
       
       // Apply search query if exists
       if (searchQuery.value) {
+        console.log('Applying search query:', searchQuery.value)
         // Add a search condition for common fields
         const searchConditions = []
         searchConditions.push(['name', 'ilike', searchQuery.value])
@@ -739,8 +754,10 @@ export default {
         
         if (domain.length > 0) {
           domain = ['&', ...domain, ...searchConditions]
+          console.log('Combined domain with search conditions:', domain)
         } else {
           domain = searchConditions
+          console.log('Set domain to search conditions:', domain)
         }
       }
       
@@ -807,23 +824,11 @@ export default {
     }
     
     // Form event handlers
-    const onFormSave = (result) => {
-      console.log('Form saved:', result)
-      // Switch back to list view
-      currentView.value = 'list'
-      // Reload records to show updated data
-      loadRecords()
-    }
-    
-    const onFormCancel = () => {
-      // Switch back to list view
-      currentView.value = 'list'
-    }
-    
-    const onFormClose = () => {
-      // Switch back to list view
-      currentView.value = 'list'
-    }
+    // Form event handlers (currently unused but kept for future implementation)
+    // const onFormClose = () => {
+    //   // Switch back to list view
+    //   currentView.value = 'list'
+    // }
     
     const loadFormDefinition = async () => {
       try {
@@ -880,9 +885,11 @@ export default {
     }
     
     return {
+      debugMode,
       pageTitle,
       searchQuery,
       loading,
+      error,
       records,
       filteredRecords,
       currentView,
@@ -892,13 +899,14 @@ export default {
       // Pagination state
       currentPage,
       itemsPerPage,
-      totalRecords,
       // Model fields information
       modelFieldsInfo,
       // Form view state
       currentRecordId,
       formDefinition,
+      // Computed properties
       availableViews,
+      // Methods
       loadRecords,
       onSearchChange,
       applyFilters,
@@ -908,12 +916,7 @@ export default {
       onRecordClick,
       // Pagination methods
       onPageChange,
-      onItemsPerPageChange,
-      // Form methods
-      onFormSave,
-      onFormCancel,
-      onFormClose,
-      loadFormDefinition
+      onItemsPerPageChange
     }
   }
 }
