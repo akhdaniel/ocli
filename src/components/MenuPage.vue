@@ -71,6 +71,12 @@
           :action="currentAction"
           :action-details="currentAction"
         />
+        <div v-else-if="currentActionLoading" class="loading-indicator">
+          Loading action...
+        </div>
+        <div v-else-if="actionError" class="error-message">
+          {{ actionError }}
+        </div>
         
         <!-- Menu Grid (only shown when no action is selected) -->
         <div class="menu-grid" v-if="!currentAction">
@@ -133,7 +139,9 @@ export default {
     const submenuHierarchy = ref([])
     const activePopup = ref(null)
     const currentAction = ref(null)
-    const currentModelName = ref(null)
+    const currentModelName = ref('')
+    const currentActionLoading = ref(false)
+    const actionError = ref('')
 
     // Watch for changes in selected menu
     watch(selectedMenu, (newMenu, oldMenu) => {
@@ -279,6 +287,10 @@ export default {
     
     const fetchMenuAction = async (menu) => {
       try {
+        // Set loading state
+        currentActionLoading.value = true
+        actionError.value = ''
+        
         // Clear current action first to trigger reactivity
         currentAction.value = null
         currentModelName.value = null
@@ -286,6 +298,7 @@ export default {
         // Check if menu has an action
         if (!menu.action) {
           console.log('Menu has no action:', menu)
+          currentActionLoading.value = false
           return
         }
         
@@ -327,6 +340,9 @@ export default {
         }
       } catch (error) {
         console.error('Error fetching menu action:', error)
+        actionError.value = 'Failed to load menu action'
+      } finally {
+        currentActionLoading.value = false
       }
     }
     
@@ -451,12 +467,19 @@ export default {
       activePopup,
       currentAction,
       currentModelName,
+      currentActionLoading,
+      actionError,
+      loadMenus,
       navigateToMenu,
-      handleLogout,
-      goToMenuPage,
+      fetchMenuAction,
+      buildSubmenuHierarchy,
+      getAllMenus,
+      getMenuChildren,
       togglePopup,
       showPopup,
-      hidePopup
+      hidePopup,
+      handleLogout,
+      goToMenuPage
     }
   }
 }
@@ -464,21 +487,29 @@ export default {
 
 <style scoped>
 .menu-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  background-color: #f5f7fa;
 }
 
-/* Top Navigation Bar */
+.loading-indicator,
+.error-message {
+  padding: 40px;
+  text-align: center;
+  color: #6c757d;
+}
+
+.error-message {
+  color: #dc3545;
+}
+
 .top-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #ffffff;
-  color: #333;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   padding: 0 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 100;
