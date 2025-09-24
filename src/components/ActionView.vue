@@ -124,6 +124,8 @@ export default {
     }
   },
   setup(props) {
+    console.log('ActionView props received:', { modelName: props.modelName, action: props.action, actionDetails: props.actionDetails })
+    
     const pageTitle = ref(props.action.name || props.modelName)
     const searchQuery = ref('')
     const loading = ref(false)

@@ -291,6 +291,8 @@ export default {
         currentActionLoading.value = true
         actionError.value = ''
         
+        console.log('Fetching menu action for:', menu)
+        
         // Clear current action first to trigger reactivity
         currentAction.value = null
         currentModelName.value = null
@@ -301,6 +303,8 @@ export default {
           currentActionLoading.value = false
           return
         }
+        
+        console.log('Menu action reference:', menu.action)
         
         // Parse the action reference (format: "model_name,id")
         const [actionModel, actionIdStr] = menu.action.split(',')
@@ -337,10 +341,15 @@ export default {
           
           // Set the current model name
           currentModelName.value = modelName
+          
+          console.log('Action loaded successfully')
+        } else {
+          console.log('No action result in response')
+          actionError.value = 'No action data received'
         }
       } catch (error) {
         console.error('Error fetching menu action:', error)
-        actionError.value = 'Failed to load menu action'
+        actionError.value = 'Failed to load menu action: ' + error.message
       } finally {
         currentActionLoading.value = false
       }
